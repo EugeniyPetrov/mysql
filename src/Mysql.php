@@ -6,13 +6,15 @@ class Mysql
 {
     protected $_pdo;
     protected $_host;
+    protected $_port;
     protected $_user;
     protected $_password;
     protected $_database;
     protected $_charset;
     protected $_debug;
+    protected $_di;
 
-    public function __construct($host, $user, $password, $database, $charset, $params = null)
+    public function __construct($host, $port = 3306, $user, $password, $database, $charset, $params = null)
     {
         if (!isset($params)) {
             $params = array(
@@ -20,11 +22,14 @@ class Mysql
             );
         }
         $this->_host = $host;
+        $this->_port = $port;
         $this->_user = $user;
         $this->_password = $password;
         $this->_database = $database;
         $this->_charset = $charset;
         $this->_debug = $params['debug'];
+
+        $this->_di = \Phalcon\DI\FactoryDefault::getDefault();
     }
 
     protected function _log($message)
@@ -38,7 +43,7 @@ class Mysql
     {
         if (!isset($this->_pdo)) {
             $this->_log('Connecting...');
-            $this->_pdo = new \PDO('mysql:host=' . $this->_host . ';dbname=' . $this->_database, $this->_user, $this->_password, array(
+            $this->_pdo = new \PDO('mysql:host=' . $this->_host . ';port=' . (int)$this->_port . ';dbname=' . $this->_database, $this->_user, $this->_password, array(
                 \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             ));
             $this->query('SET NAMES :charset', array(
@@ -46,6 +51,16 @@ class Mysql
             ));
         }
         return $this->_pdo;
+    }
+
+    protected function _getDI()
+    {
+        return $this->_di;
+    }
+
+    protected function _getCacheKey($cache_key)
+    {
+        return 'mysql.' . $this->_host . ':' . $this->_port . '.' . $this->_database . '.' . $cache_key;
     }
 
     public function query($sql, $params = null)
@@ -78,9 +93,9 @@ class Mysql
     {
         $mc = null;
         if (isset($options['cache_key'])) {
-            $mc = memcached($this->_database);
-            $value = $mc->get('mysql.' . $options['cache_key']);
-            if ($mc->getResultCode() == Memcached::RES_SUCCESS) {
+            $mc = $this->_getDI()->get('memcache');
+            $value = $mc->get($this->_getCacheKey($options['cache_key']));
+            if ($value !== null) {
                 $this->_log('Cached (' . $options['cache_key'] . ')');
                 return $value;
             }
@@ -88,7 +103,7 @@ class Mysql
         $result = $this->query($sql, $params)->fetchAll();
 
         if (isset($mc)) {
-            $mc->set('mysql.' . $options['cache_key'], $result, 3600 * 24);
+            $mc->save($this->_getCacheKey($options['cache_key']), $result, 3600 * 24);
         }
 
         return $result;
@@ -175,7 +190,7 @@ class Mysql
 
     public function flushCache($cache_key)
     {
-        $mc = memcached($this->_database);
-        $value = $mc->delete('mysql.' . $cache_key);
+        $mc = $this->_getDI()->get('memcache');
+        $mc->delete($this->_getCacheKey($cache_key));
     }
 }
