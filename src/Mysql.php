@@ -152,16 +152,10 @@ class Mysql
 
     public function formatSql($sql, $params = null)
     {
-        $keys = array();
         if ($params) {
-            krsort($params);
-            foreach ($params as $key => $value) {
-                $keys[] = ':' . preg_quote($key);
-            }
-        }
-        $tokens = array($sql);
-        if ($keys) {
-            $tokens = preg_split('~(' . join('|', $keys) . ')~', $sql, null, PREG_SPLIT_DELIM_CAPTURE);
+            $tokens = preg_split('~(:[a-z_][0-9a-z_]*)~', $sql, null, PREG_SPLIT_DELIM_CAPTURE);
+        } else {
+            $tokens = array($sql);
         }
         $sql = '';
         foreach ($tokens as $token) {
